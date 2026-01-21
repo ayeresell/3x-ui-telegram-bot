@@ -43,9 +43,9 @@
 
 ### 4. Пример для REALITY
 
-Ваша конфигурация:
+Пример конфигурации:
 ```
-vless://uuid@server:443?type=tcp&encryption=none&security=reality&pbk=...&fp=random&sni=s.netmozga.ru&sid=...&spx=/&flow=xtls-rprx-vision
+vless://uuid@server:443?type=tcp&encryption=none&security=reality&pbk=...&fp=random&sni=your-sni.com&sid=...&spx=/&flow=xtls-rprx-vision
 ```
 
 Бот автоматически:

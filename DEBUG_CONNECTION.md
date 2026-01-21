@@ -3,17 +3,17 @@
 ## Ваша конфигурация
 
 ```bash
-XUI_BASE_URL=https://netmozga.ru:54544/6yUOrwyP4W
-XUI_USERNAME=admin
-XUI_PASSWORD=ваш_пароль
+XUI_BASE_URL=https://your-domain.com:PORT/path
+XUI_USERNAME=your_username
+XUI_PASSWORD=your_password
 XUI_VERIFY_SSL=false
 ```
 
 ## Проблема
 
 Бот не может залогиниться, но API работает:
-- ❌ Логин: `https://netmozga.ru:54544/6yUOrwyP4W/login` - не работает
-- ✅ API: `https://netmozga.ru:54544/6yUOrwyP4W/panel/api/inbounds/list` - работает
+- ❌ Логин: `https://your-domain.com:PORT/path/login` - не работает
+- ✅ API: `https://your-domain.com:PORT/path/panel/api/inbounds/list` - работает
 
 ## Шаги диагностики
 
@@ -89,9 +89,9 @@ docker exec -it vpn_bot python test_xui_connection.py
 **Проверка:**
 ```bash
 # Попробуйте разные варианты
-curl -k https://netmozga.ru:54544/6yUOrwyP4W/login
-curl -k https://netmozga.ru:54544/6yUOrwyP4W/panel/login
-curl -k https://netmozga.ru:54544/login
+curl -k https://your-domain.com:PORT/path/login
+curl -k https://your-domain.com:PORT/path/panel/login
+curl -k https://your-domain.com:PORT/login
 ```
 
 **Решение:** Если один из вариантов работает, нужно будет изменить код.

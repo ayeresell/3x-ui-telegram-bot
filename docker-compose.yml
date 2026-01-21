@@ -10,9 +10,4 @@ services:
       - ./data:/app/data
       - ./logs:/app/logs
     restart: unless-stopped
-    networks:
-      - vpn_network
-
-networks:
-  vpn_network:
-    driver: bridge
+    network_mode: "host"

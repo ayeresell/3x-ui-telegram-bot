@@ -132,10 +132,10 @@ firewall-cmd --reload
 Если бот в Docker, а панель на хосте, используйте:
 ```bash
 # В Linux - используйте IP хоста из Docker
-XUI_BASE_URL=http://172.17.0.1:54544/6yUOrwyP4W
+XUI_BASE_URL=http://172.17.0.1:PORT/path
 
 # Или используйте host.docker.internal (в некоторых версиях Docker)
-XUI_BASE_URL=http://host.docker.internal:54544/6yUOrwyP4W
+XUI_BASE_URL=http://host.docker.internal:PORT/path
 
 # Или добавьте бот в сеть хоста
 docker compose down
@@ -154,7 +154,7 @@ docker compose up -d
 ip addr show docker0
 
 # Используйте этот IP (обычно 172.17.0.1)
-XUI_BASE_URL=http://172.17.0.1:54544/6yUOrwyP4W
+XUI_BASE_URL=http://172.17.0.1:PORT/path
 ```
 
 **Решение 2 - Добавить extra_hosts в docker-compose.yml:**
@@ -175,7 +175,7 @@ services:
 
 Затем в .env:
 ```bash
-XUI_BASE_URL=http://host.docker.internal:54544/6yUOrwyP4W
+XUI_BASE_URL=http://host.docker.internal:PORT/path
 ```
 
 ## Дополнительная диагностика

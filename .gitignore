@@ -4,9 +4,6 @@ __pycache__/
 *$py.class
 *.so
 .Python
-env/
-venv/
-ENV/
 build/
 develop-eggs/
 dist/
@@ -23,21 +20,10 @@ wheels/
 .installed.cfg
 *.egg
 
-# Environment
-.env
-.env.local
-
-# Database
-*.db
-*.sqlite
-*.sqlite3
-
-# Logs
-logs/
-*.log
-
-# Data
-data/
+# Virtual Environment
+venv/
+ENV/
+env/
 
 # IDE
 .vscode/
@@ -45,10 +31,15 @@ data/
 *.swp
 *.swo
 *~
+.cursor/
+
+# Project specific
+.env
+data/
+logs/
+*.db
+*.log
 
 # OS
 .DS_Store
 Thumbs.db
-
-# Docker
-docker-compose.override.yml
