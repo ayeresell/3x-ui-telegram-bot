@@ -153,11 +153,21 @@ async def approve_request(callback: CallbackQuery, session: AsyncSession):
         log.info(f"Admin {callback.from_user.id} approved user {user_id} with inbound {inbound_id}")
     
     except XUIClientError as e:
+        error_msg = str(e)
         log.error(f"Error creating client in 3x-ui: {e}")
-        await callback.answer(
-            "❌ Ошибка при создании клиента в 3x-ui. Проверьте логи.",
-            show_alert=True
-        )
+        
+        # Check if it's a duplicate email error
+        if "Duplicate email" in error_msg or "duplicate" in error_msg.lower():
+            await callback.answer(
+                f"❌ Клиент с email '{user.email}' уже существует в 3x-ui.\n"
+                f"Удалите его из панели или используйте другой инбаунд.",
+                show_alert=True
+            )
+        else:
+            await callback.answer(
+                f"❌ Ошибка при создании клиента в 3x-ui:\n{error_msg[:100]}",
+                show_alert=True
+            )
     except Exception as e:
         log.error(f"Error approving request: {e}")
         await callback.answer("❌ Произошла ошибка.", show_alert=True)

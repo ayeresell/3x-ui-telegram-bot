@@ -188,6 +188,13 @@ class XUIClient:
         if "clients" not in settings_dict:
             settings_dict["clients"] = []
         
+        # Check if client with this email already exists
+        existing_clients = settings_dict.get("clients", [])
+        for client in existing_clients:
+            if client.get("email") == email:
+                log.warning(f"Client with email {email} already exists in inbound {inbound_id}")
+                raise XUIClientError(f"Client with email '{email}' already exists in this inbound")
+        
         # Create new client
         new_client = {
             "id": uuid,
