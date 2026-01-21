@@ -192,10 +192,14 @@ async def reject_request(callback: CallbackQuery, session: AsyncSession):
         # Update request status
         await request_repo.update_status(request_id, "rejected", callback.from_user.id)
         
+        # Delete user from database to allow re-application
+        await user_repo.delete_user(user_id)
+        
         # Notify user
         await callback.bot.send_message(
             user.tg_id,
-            "❌ К сожалению, ваша заявка на доступ была отклонена."
+            "❌ К сожалению, ваша заявка на доступ была отклонена.\n\n"
+            "Вы можете подать новую заявку, используя /start"
         )
         
         # Update admin message
@@ -205,8 +209,8 @@ async def reject_request(callback: CallbackQuery, session: AsyncSession):
             parse_mode="HTML"
         )
         
-        await callback.answer("✅ Заявка отклонена.")
-        log.info(f"Admin {callback.from_user.id} rejected user {user_id}")
+        await callback.answer("✅ Заявка отклонена. Пользователь удален из базы.")
+        log.info(f"Admin {callback.from_user.id} rejected and deleted user {user_id}")
     
     except Exception as e:
         log.error(f"Error rejecting request: {e}")
