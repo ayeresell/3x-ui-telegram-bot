@@ -215,8 +215,20 @@ class XUIClient:
             log.info(f"Successfully created client: {email}")
             return True
         else:
-            log.error(f"Failed to create client: {result}")
-            raise XUIClientError(f"Failed to create client: {result.get('msg', 'Unknown error')}")
+            error_msg = result.get('msg', 'Unknown error')
+            log.error(f"Failed to create client with email '{email}': {result}")
+            
+            # Parse duplicate email error
+            if "Duplicate email" in error_msg:
+                # Extract the duplicate email from error message
+                import re
+                match = re.search(r'Duplicate email: (.+)', error_msg)
+                if match:
+                    duplicate_email = match.group(1).strip()
+                    log.error(f"Duplicate email detected: '{duplicate_email}' (we tried to create: '{email}')")
+                    raise XUIClientError(f"В 3x-ui уже существует клиент с email '{duplicate_email}'. Удалите его через панель 3x-ui.")
+            
+            raise XUIClientError(f"Failed to create client: {error_msg}")
     
     async def get_client_traffic(self, email: str) -> Dict[str, int]:
         """Get client traffic statistics by email."""

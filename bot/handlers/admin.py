@@ -153,27 +153,16 @@ async def approve_request(callback: CallbackQuery, session: AsyncSession):
         error_msg = str(e)
         log.error(f"Error creating client in 3x-ui: {e}")
         
-        # Check if it's a duplicate name error
-        if "уже существует" in error_msg or "Duplicate" in error_msg or "duplicate" in error_msg.lower():
-            # Reject the request and delete user so they can reapply with new name
-            await request_repo.update_status(request_id, "rejected", callback.from_user.id)
-            await user_repo.delete_user(user_id)
-            
-            # Notify user to choose different name
-            await callback.bot.send_message(
-                user.tg_id,
-                f"❌ К сожалению, имя '{user.full_name}' уже используется другим пользователем.\n\n"
-                "Пожалуйста, подайте новую заявку с другим именем, используя /start"
-            )
-            
+        # Check if it's a duplicate email error from 3x-ui
+        if "уже существует" in error_msg or "Duplicate" in error_msg:
             await callback.answer(
-                f"❌ Имя '{user.full_name}' уже занято.\n"
-                f"Пользователь уведомлен и может подать новую заявку с другим именем.",
+                f"❌ {error_msg}\n\n"
+                f"Удалите дубликат через 'Все клиенты 3x-ui' или панель.",
                 show_alert=True
             )
         else:
             await callback.answer(
-                f"❌ Ошибка при создании клиента:\n{error_msg[:150]}",
+                f"❌ Ошибка при создании клиента:\n{error_msg[:200]}",
                 show_alert=True
             )
     except Exception as e:
@@ -638,37 +627,48 @@ async def show_all_clients(callback: CallbackQuery, session: AsyncSession):
             await callback.answer()
             return
         
-        # Format output
+        # Format output with buttons for each client
         text = f"📋 <b>Все клиенты 3x-ui</b>\n\n"
         text += f"Всего клиентов: {total_clients}\n"
         text += f"Инбаундов с клиентами: {len(all_clients)}\n\n"
+        text += "Нажмите на клиента для удаления:\n\n"
+        
+        buttons = []
+        client_count = 0
         
         for inbound_info in all_clients:
-            text += f"🔹 <b>{inbound_info['remark']}</b> ({inbound_info['protocol']}:{inbound_info['port']})\n"
-            text += f"   ID: {inbound_info['inbound_id']}\n"
-            text += f"   Клиентов: {len(inbound_info['clients'])}\n"
+            text += f"🔹 <b>{inbound_info['remark']}</b> (ID: {inbound_info['inbound_id']})\n"
             
-            for client in inbound_info['clients'][:5]:  # Show first 5 clients
+            for client in inbound_info['clients']:
+                if client_count >= 20:  # Limit to 20 buttons
+                    break
+                    
                 email = client.get('email', 'Unknown')
+                uuid = client.get('id', '')
                 enabled = client.get('enable', False)
                 status = "🟢" if enabled else "🔴"
-                text += f"   {status} {email}\n"
-            
-            if len(inbound_info['clients']) > 5:
-                text += f"   ... и еще {len(inbound_info['clients']) - 5}\n"
+                
+                # Add button for this client
+                buttons.append([
+                    InlineKeyboardButton(
+                        text=f"{status} {email}",
+                        callback_data=f"delete_client:{inbound_info['inbound_id']}:{uuid}:{email}"
+                    )
+                ])
+                client_count += 1
             
             text += "\n"
-        
-        # Trim if too long
-        if len(text) > 4000:
-            text = text[:3900] + "\n\n... (список обрезан)"
+            
+            if client_count >= 20:
+                text += "... (показаны первые 20 клиентов)\n"
+                break
         
         # Add back button
-        back_keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="◀️ Назад", callback_data="admin_back")]
-            ]
-        )
+        buttons.append([
+            InlineKeyboardButton(text="◀️ Назад", callback_data="admin_back")
+        ])
+        
+        back_keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
         
         await callback.message.edit_text(
             text,
@@ -687,3 +687,87 @@ async def admin_back(callback: CallbackQuery, session: AsyncSession):
     """Go back to admin menu."""
     await cmd_admin(callback.message, session)
     await callback.answer()
+
+
+@router.callback_query(F.data.startswith("delete_client:"))
+async def delete_client_from_xui(callback: CallbackQuery, session: AsyncSession):
+    """Delete client from 3x-ui."""
+    try:
+        parts = callback.data.split(":", 3)
+        if len(parts) != 4:
+            await callback.answer("❌ Неверный формат данных.", show_alert=True)
+            return
+            
+        _, inbound_id, uuid, email = parts
+        inbound_id = int(inbound_id)
+        
+        # Confirm deletion
+        confirm_keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="✅ Да, удалить",
+                        callback_data=f"confirm_delete_client:{inbound_id}:{uuid}:{email}"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="❌ Отмена",
+                        callback_data="admin_all_clients"
+                    )
+                ]
+            ]
+        )
+        
+        await callback.message.edit_text(
+            f"⚠️ <b>Подтверждение удаления</b>\n\n"
+            f"Вы уверены, что хотите удалить клиента?\n\n"
+            f"Email: <code>{email}</code>\n"
+            f"UUID: <code>{uuid}</code>\n"
+            f"Inbound ID: {inbound_id}\n\n"
+            f"Это действие нельзя отменить!",
+            reply_markup=confirm_keyboard,
+            parse_mode="HTML"
+        )
+        await callback.answer()
+        
+    except Exception as e:
+        log.error(f"Error preparing client deletion: {e}")
+        await callback.answer("❌ Ошибка.", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("confirm_delete_client:"))
+async def confirm_delete_client_from_xui(callback: CallbackQuery, session: AsyncSession):
+    """Confirm and delete client from 3x-ui."""
+    try:
+        parts = callback.data.split(":", 3)
+        if len(parts) != 4:
+            await callback.answer("❌ Неверный формат данных.", show_alert=True)
+            return
+            
+        _, inbound_id, uuid, email = parts
+        inbound_id = int(inbound_id)
+        
+        # Delete client from 3x-ui
+        async with XUIClient() as xui:
+            await xui.delete_client(uuid, inbound_id)
+        
+        await callback.message.edit_text(
+            f"✅ <b>Клиент удален</b>\n\n"
+            f"Email: <code>{email}</code>\n"
+            f"UUID: <code>{uuid}</code>\n\n"
+            f"Клиент успешно удален из 3x-ui.",
+            parse_mode="HTML"
+        )
+        
+        await callback.answer("✅ Клиент удален!")
+        log.info(f"Admin {callback.from_user.id} deleted client {email} (UUID: {uuid}) from inbound {inbound_id}")
+        
+        # Wait a bit and show clients list again
+        import asyncio
+        await asyncio.sleep(2)
+        await show_all_clients(callback, session)
+        
+    except Exception as e:
+        log.error(f"Error deleting client: {e}")
+        await callback.answer(f"❌ Ошибка при удалении: {str(e)[:100]}", show_alert=True)
