@@ -27,7 +27,7 @@ class XUIClient:
     async def __aenter__(self):
         """Async context manager entry."""
         self.client = httpx.AsyncClient(
-            timeout=httpx.Timeout(connect=10.0, read=30.0),
+            timeout=httpx.Timeout(connect=10.0, read=30.0, write=10.0, pool=10.0),
             follow_redirects=True
         )
         await self.login()
