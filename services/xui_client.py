@@ -174,8 +174,7 @@ class XUIClient:
             log.warning(f"Client {email} already exists in inbound '{inbound_remark}'")
             raise XUIClientError(f"Клиент с таким именем уже существует в инбаунде '{inbound_remark}'. Попросите пользователя выбрать другое имя.")
         
-        # Prepare request data with only the new client info
-        # This avoids sending the entire client list which might contain duplicates
+        # Prepare request data with complete client info as per 3x-ui API spec
         request_data = {
             "id": inbound_id,
             "settings": json.dumps({
@@ -184,11 +183,20 @@ class XUIClient:
                         "id": uuid,
                         "email": email,
                         "enable": enable,
-                        "flow": ""
+                        "flow": "",
+                        "limitIp": 0,
+                        "totalGB": 0,
+                        "expiryTime": 0,
+                        "tgId": "",
+                        "subId": "",
+                        "reset": 0
                     }
                 ]
             })
         }
+        
+        log.info(f"Sending addClient request: inbound_id={inbound_id}, email={email}, uuid={uuid}")
+        log.debug(f"Request data: {request_data}")
         
         # Add client via API
         result = await self._make_request("POST", "/panel/api/inbounds/addClient", request_data)

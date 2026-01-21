@@ -1,12 +1,14 @@
 """User handlers for the bot."""
 
 import uuid
+from datetime import datetime
 from aiogram import Router, F
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message, BufferedInputFile
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import update
 
 from bot.keyboards.user_kb import (
     get_request_access_keyboard,
@@ -133,24 +135,47 @@ async def process_name(message: Message, state: FSMContext, session: AsyncSessio
         await message.answer("❌ Имя слишком короткое. Попробуйте еще раз:")
         return
     
-    # Create user in database
+    # Create or update user in database
     user_repo = UserRepository(session)
     request_repo = AccessRequestRepository(session)
-    
-    user_uuid = str(uuid.uuid4())
     
     # Format email as "Name_Username" or "Name_TelegramID"
     username_part = message.from_user.username if message.from_user.username else str(message.from_user.id)
     email = f"{full_name}_{username_part}"
     
     try:
-        user = await user_repo.create(
-            tg_id=message.from_user.id,
-            username=message.from_user.username,
-            full_name=full_name,
-            uuid=user_uuid,
-            email=email
-        )
+        # Check if user already exists
+        existing_user = await user_repo.get_by_tg_id(message.from_user.id)
+        
+        if existing_user:
+            # Update existing user's data
+            log.info(f"Updating existing user {existing_user.id}: old_email={existing_user.email}, new_email={email}")
+            
+            from database.models import User
+            
+            await session.execute(
+                update(User)
+                .where(User.id == existing_user.id)
+                .values(
+                    full_name=full_name,
+                    email=email,
+                    username=message.from_user.username,
+                    updated_at=datetime.utcnow()
+                )
+            )
+            await session.commit()
+            
+            user = await user_repo.get_by_id(existing_user.id)
+        else:
+            # Create new user
+            user_uuid = str(uuid.uuid4())
+            user = await user_repo.create(
+                tg_id=message.from_user.id,
+                username=message.from_user.username,
+                full_name=full_name,
+                uuid=user_uuid,
+                email=email
+            )
         
         # Create access request
         access_request = await request_repo.create(user.id)

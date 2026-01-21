@@ -114,6 +114,9 @@ async def approve_request(callback: CallbackQuery, session: AsyncSession):
         return
     
     try:
+        # Log user data before creating client
+        log.info(f"Approving user: id={user.id}, email={user.email}, uuid={user.uuid}, full_name={user.full_name}")
+        
         # Create client in 3x-ui
         async with XUIClient() as xui:
             await xui.create_client(
