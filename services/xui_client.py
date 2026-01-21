@@ -174,6 +174,34 @@ class XUIClient:
             log.warning(f"Client {email} already exists in inbound '{inbound_remark}'")
             raise XUIClientError(f"Клиент с таким именем уже существует в инбаунде '{inbound_remark}'. Попросите пользователя выбрать другое имя.")
         
+        # Check for duplicate emails in the target inbound BEFORE adding new client
+        inbound_data = await self.get_inbound(inbound_id)
+        if inbound_data.get("success"):
+            obj = inbound_data.get("obj", {})
+            settings_str = obj.get("settings", "{}")
+            try:
+                settings_dict = json.loads(settings_str)
+                existing_clients = settings_dict.get("clients", [])
+                existing_emails = [c.get("email") for c in existing_clients]
+                
+                # Count email occurrences
+                email_counts = {}
+                for e in existing_emails:
+                    email_counts[e] = email_counts.get(e, 0) + 1
+                
+                # Find duplicates
+                duplicates = [e for e, count in email_counts.items() if count > 1]
+                if duplicates:
+                    log.error(f"Found duplicate emails in inbound {inbound_id}: {duplicates}")
+                    dup_list = ", ".join([f"'{d}'" for d in duplicates])
+                    raise XUIClientError(
+                        f"⚠️ В инбаунде ID:{inbound_id} найдены дубликаты клиентов: {dup_list}\n\n"
+                        f"Это ошибка конфигурации 3x-ui. Зайдите в панель 3x-ui и удалите дубликаты вручную, "
+                        f"затем попробуйте снова одобрить заявку."
+                    )
+            except json.JSONDecodeError:
+                pass  # Ignore parse errors, will try to add client anyway
+        
         # Prepare request data with complete client info as per 3x-ui API spec
         request_data = {
             "id": inbound_id,
