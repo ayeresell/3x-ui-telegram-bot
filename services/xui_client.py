@@ -167,6 +167,13 @@ class XUIClient:
         """Create a new client in the inbound."""
         log.info(f"Creating client: email={email}, uuid={uuid}, inbound_id={inbound_id}")
         
+        # Check if client exists in any inbound
+        existing_client = await self.find_client_in_all_inbounds(email)
+        if existing_client:
+            inbound_remark = existing_client['inbound_remark']
+            log.warning(f"Client {email} already exists in inbound '{inbound_remark}'")
+            raise XUIClientError(f"Клиент с таким именем уже существует в инбаунде '{inbound_remark}'. Попросите пользователя выбрать другое имя.")
+        
         # Get current inbound configuration
         inbound_data = await self.get_inbound(inbound_id)
         
@@ -183,17 +190,6 @@ class XUIClient:
             settings_dict = json.loads(settings_str)
         except json.JSONDecodeError:
             settings_dict = {"clients": []}
-        
-        # Ensure clients array exists
-        if "clients" not in settings_dict:
-            settings_dict["clients"] = []
-        
-        # Check if client with this email already exists
-        existing_clients = settings_dict.get("clients", [])
-        for client in existing_clients:
-            if client.get("email") == email:
-                log.warning(f"Client with email {email} already exists in inbound {inbound_id}")
-                raise XUIClientError(f"Client with email '{email}' already exists in this inbound")
         
         # Create new client
         new_client = {
@@ -320,6 +316,55 @@ class XUIClient:
             return result.get("obj", [])
         
         return []
+    
+    async def find_client_in_all_inbounds(self, email: str) -> Optional[Dict[str, Any]]:
+        """Find client by email in all inbounds."""
+        log.info(f"Searching for client with email: {email}")
+        
+        inbounds = await self.get_inbound_list()
+        
+        for inbound in inbounds:
+            inbound_id = inbound.get("id")
+            settings_str = inbound.get("settings", "{}")
+            
+            try:
+                settings_dict = json.loads(settings_str)
+                clients = settings_dict.get("clients", [])
+                
+                for client in clients:
+                    if client.get("email") == email:
+                        log.info(f"Found client {email} in inbound {inbound_id}")
+                        return {
+                            "inbound_id": inbound_id,
+                            "inbound_remark": inbound.get("remark", "Unknown"),
+                            "client": client
+                        }
+            except json.JSONDecodeError:
+                continue
+        
+        log.info(f"Client {email} not found in any inbound")
+        return None
+    
+    async def delete_client_from_all_inbounds(self, email: str) -> bool:
+        """Delete client by email from all inbounds where it exists."""
+        log.info(f"Attempting to delete client {email} from all inbounds")
+        
+        client_info = await self.find_client_in_all_inbounds(email)
+        
+        if not client_info:
+            log.warning(f"Client {email} not found in any inbound")
+            return False
+        
+        inbound_id = client_info["inbound_id"]
+        uuid = client_info["client"].get("id")
+        
+        try:
+            await self.delete_client(uuid, inbound_id)
+            log.info(f"Successfully deleted client {email} from inbound {inbound_id}")
+            return True
+        except Exception as e:
+            log.error(f"Failed to delete client {email}: {e}")
+            return False
     
     async def get_client_link(self, inbound_id: int, email: str) -> Optional[str]:
         """

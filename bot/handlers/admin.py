@@ -2,7 +2,7 @@
 
 from aiogram import Router, F
 from aiogram.filters import Command
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.keyboards.admin_kb import (
@@ -10,7 +10,8 @@ from bot.keyboards.admin_kb import (
     get_user_management_keyboard,
     get_delete_confirmation_keyboard,
     get_inbound_selection_keyboard,
-    get_inbound_list_keyboard
+    get_inbound_list_keyboard,
+    get_admin_menu_keyboard
 )
 from bot.keyboards.user_kb import get_main_menu_keyboard
 from database.repositories import UserRepository, AccessRequestRepository, ActiveInboundRepository
@@ -27,13 +28,9 @@ router.callback_query.middleware(AdminCheckMiddleware())
 
 @router.message(Command("admin"))
 async def cmd_admin(message: Message, session: AsyncSession):
-    """Handle /admin command - show user list."""
+    """Handle /admin command - show admin menu."""
     user_repo = UserRepository(session)
     users = await user_repo.get_all()
-    
-    if not users:
-        await message.answer("📋 Список пользователей пуст.")
-        return
     
     total_users = len(users)
     active_users = len([u for u in users if u.is_active])
@@ -44,12 +41,12 @@ async def cmd_admin(message: Message, session: AsyncSession):
         f"👥 Всего пользователей: {total_users}\n"
         f"✅ Одобрено: {approved_users}\n"
         f"🟢 Активных: {active_users}\n\n"
-        "Выберите пользователя для управления:"
+        "Выберите действие:"
     )
     
     await message.answer(
         stats_text,
-        reply_markup=get_user_list_keyboard(users),
+        reply_markup=get_admin_menu_keyboard(),
         parse_mode="HTML"
     )
 
@@ -156,16 +153,27 @@ async def approve_request(callback: CallbackQuery, session: AsyncSession):
         error_msg = str(e)
         log.error(f"Error creating client in 3x-ui: {e}")
         
-        # Check if it's a duplicate email error
-        if "Duplicate email" in error_msg or "duplicate" in error_msg.lower():
+        # Check if it's a duplicate name error
+        if "уже существует" in error_msg or "Duplicate" in error_msg or "duplicate" in error_msg.lower():
+            # Reject the request and delete user so they can reapply with new name
+            await request_repo.update_status(request_id, "rejected", callback.from_user.id)
+            await user_repo.delete_user(user_id)
+            
+            # Notify user to choose different name
+            await callback.bot.send_message(
+                user.tg_id,
+                f"❌ К сожалению, имя '{user.full_name}' уже используется другим пользователем.\n\n"
+                "Пожалуйста, подайте новую заявку с другим именем, используя /start"
+            )
+            
             await callback.answer(
-                f"❌ Клиент с email '{user.email}' уже существует в 3x-ui.\n"
-                f"Удалите его из панели или используйте другой инбаунд.",
+                f"❌ Имя '{user.full_name}' уже занято.\n"
+                f"Пользователь уведомлен и может подать новую заявку с другим именем.",
                 show_alert=True
             )
         else:
             await callback.answer(
-                f"❌ Ошибка при создании клиента в 3x-ui:\n{error_msg[:100]}",
+                f"❌ Ошибка при создании клиента:\n{error_msg[:150]}",
                 show_alert=True
             )
     except Exception as e:
@@ -543,3 +551,139 @@ async def refresh_inbounds(callback: CallbackQuery, session: AsyncSession):
     """Refresh inbound list from 3x-ui."""
     await cmd_settings(callback.message, session)
     await callback.answer("🔄 Список обновлен!")
+
+
+@router.callback_query(F.data == "admin_users")
+async def show_admin_users(callback: CallbackQuery, session: AsyncSession):
+    """Show bot users list."""
+    user_repo = UserRepository(session)
+    users = await user_repo.get_all()
+    
+    if not users:
+        await callback.answer("📋 Список пользователей пуст.", show_alert=True)
+        return
+    
+    total_users = len(users)
+    active_users = len([u for u in users if u.is_active])
+    approved_users = len([u for u in users if u.is_approved])
+    
+    stats_text = (
+        "👨‍💼 <b>Пользователи бота</b>\n\n"
+        f"👥 Всего пользователей: {total_users}\n"
+        f"✅ Одобрено: {approved_users}\n"
+        f"🟢 Активных: {active_users}\n\n"
+        "Выберите пользователя для управления:"
+    )
+    
+    await callback.message.edit_text(
+        stats_text,
+        reply_markup=get_user_list_keyboard(users),
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "admin_settings")
+async def show_admin_settings(callback: CallbackQuery, session: AsyncSession):
+    """Show inbound settings."""
+    await cmd_settings(callback.message, session)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "admin_all_clients")
+async def show_all_clients(callback: CallbackQuery, session: AsyncSession):
+    """Show all clients from all inbounds in 3x-ui."""
+    try:
+        async with XUIClient() as xui:
+            inbounds = await xui.get_inbound_list()
+        
+        if not inbounds:
+            await callback.answer("❌ Не удалось получить список инбаундов.", show_alert=True)
+            return
+        
+        # Collect all clients from all inbounds
+        all_clients = []
+        total_clients = 0
+        
+        for inbound in inbounds:
+            inbound_id = inbound.get("id")
+            remark = inbound.get("remark", "Без названия")
+            protocol = inbound.get("protocol", "Unknown")
+            port = inbound.get("port", 0)
+            
+            settings_str = inbound.get("settings", "{}")
+            try:
+                import json
+                settings_dict = json.loads(settings_str)
+                clients = settings_dict.get("clients", [])
+                
+                if clients:
+                    all_clients.append({
+                        "inbound_id": inbound_id,
+                        "remark": remark,
+                        "protocol": protocol,
+                        "port": port,
+                        "clients": clients
+                    })
+                    total_clients += len(clients)
+            except json.JSONDecodeError:
+                continue
+        
+        if not all_clients:
+            await callback.message.edit_text(
+                "📋 <b>Все клиенты 3x-ui</b>\n\n"
+                "Клиенты не найдены.",
+                parse_mode="HTML"
+            )
+            await callback.answer()
+            return
+        
+        # Format output
+        text = f"📋 <b>Все клиенты 3x-ui</b>\n\n"
+        text += f"Всего клиентов: {total_clients}\n"
+        text += f"Инбаундов с клиентами: {len(all_clients)}\n\n"
+        
+        for inbound_info in all_clients:
+            text += f"🔹 <b>{inbound_info['remark']}</b> ({inbound_info['protocol']}:{inbound_info['port']})\n"
+            text += f"   ID: {inbound_info['inbound_id']}\n"
+            text += f"   Клиентов: {len(inbound_info['clients'])}\n"
+            
+            for client in inbound_info['clients'][:5]:  # Show first 5 clients
+                email = client.get('email', 'Unknown')
+                enabled = client.get('enable', False)
+                status = "🟢" if enabled else "🔴"
+                text += f"   {status} {email}\n"
+            
+            if len(inbound_info['clients']) > 5:
+                text += f"   ... и еще {len(inbound_info['clients']) - 5}\n"
+            
+            text += "\n"
+        
+        # Trim if too long
+        if len(text) > 4000:
+            text = text[:3900] + "\n\n... (список обрезан)"
+        
+        # Add back button
+        back_keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="◀️ Назад", callback_data="admin_back")]
+            ]
+        )
+        
+        await callback.message.edit_text(
+            text,
+            reply_markup=back_keyboard,
+            parse_mode="HTML"
+        )
+        await callback.answer()
+        
+    except Exception as e:
+        log.error(f"Error getting all clients: {e}")
+        await callback.answer("❌ Ошибка при получении списка клиентов.", show_alert=True)
+
+
+@router.callback_query(F.data == "admin_back")
+async def admin_back(callback: CallbackQuery, session: AsyncSession):
+    """Go back to admin menu."""
+    await cmd_admin(callback.message, session)
+    await callback.answer()

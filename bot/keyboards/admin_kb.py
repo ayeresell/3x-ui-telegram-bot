@@ -163,3 +163,30 @@ def get_delete_confirmation_keyboard(user_id: int) -> InlineKeyboardMarkup:
         ]
     )
     return keyboard
+
+
+def get_admin_menu_keyboard() -> InlineKeyboardMarkup:
+    """Main admin menu keyboard."""
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="👥 Пользователи бота",
+                    callback_data="admin_users"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="📋 Все клиенты 3x-ui",
+                    callback_data="admin_all_clients"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="⚙️ Настройки инбаундов",
+                    callback_data="admin_settings"
+                )
+            ]
+        ]
+    )
+    return keyboard
