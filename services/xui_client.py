@@ -224,10 +224,20 @@ class XUIClient:
         }
         
         log.info(f"Sending addClient request: inbound_id={inbound_id}, email={email}, uuid={uuid}")
-        log.debug(f"Request data: {request_data}")
+        log.info(f"Request data settings: {request_data['settings']}")
         
-        # Add client via API
-        result = await self._make_request("POST", "/panel/api/inbounds/addClient", request_data)
+        # Add client via API - send as form data, not JSON
+        url = f"{self.base_url}/panel/api/inbounds/addClient"
+        headers = {"Cookie": self.session_cookie} if self.session_cookie else {}
+        
+        try:
+            response = await self.client.post(url, data=request_data, headers=headers)
+            log.info(f"addClient response status: {response.status_code}")
+            log.info(f"addClient response body: {response.text[:500]}")
+            result = response.json()
+        except Exception as e:
+            log.error(f"addClient request failed: {e}")
+            raise XUIClientError(f"Request failed: {e}")
         
         if result.get("success"):
             log.info(f"Successfully created client: {email}")
