@@ -148,12 +148,15 @@ BOT_TOKEN=1234567890:ABCdefGHIjklMNOpqrsTUVwxyz
 # Ваш Telegram ID (администратор)
 ADMIN_TG_ID=123456789
 
-# URL вашей панели 3x-ui
-XUI_BASE_URL=https://your-server.com
+# URL вашей панели 3x-ui (с портом!)
+XUI_BASE_URL=https://your-server.com:2053
 
 # Данные для входа в панель
 XUI_USERNAME=admin
 XUI_PASSWORD=your_password
+
+# Проверка SSL (false для самоподписанных сертификатов)
+XUI_VERIFY_SSL=false
 
 # Настройки для генерации VLESS ссылок (ОПЦИОНАЛЬНО - используются как fallback)
 # Бот автоматически получает готовые ссылки из 3x-ui API
@@ -325,17 +328,44 @@ docker stats vpn_bot
 
 ## Устранение неполадок
 
+### Бот не может подключиться к 3x-ui
+
+**Ошибка:** `All connection attempts failed` или `Login failed`
+
+**Решение:**
+
+1. **Проверьте конфигурацию в `.env`:**
+   ```bash
+   nano .env
+   ```
+   Убедитесь, что:
+   - `XUI_BASE_URL` правильный (с протоколом и портом)
+   - `XUI_USERNAME` и `XUI_PASSWORD` верные
+   - `XUI_VERIFY_SSL=false` для самоподписанных сертификатов
+
+2. **Запустите тест подключения:**
+   ```bash
+   docker exec -it vpn_bot python test_xui_connection.py
+   ```
+
+3. **Проверьте доступность панели:**
+   ```bash
+   curl -k https://your-server.com:2053/login
+   ```
+
+4. **Смотрите детальное руководство:** [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
+
 ### Бот не запускается
 
 1. Проверьте правильность BOT_TOKEN
 2. Убедитесь, что все переменные окружения заданы
-3. Проверьте логи: `docker-compose logs`
+3. Проверьте логи: `docker compose logs`
 
 ### Ошибки при создании клиента
 
 1. Проверьте доступность панели 3x-ui (XUI_BASE_URL)
 2. Проверьте правильность XUI_USERNAME и XUI_PASSWORD
-3. Убедитесь, что XUI_INBOUND_ID существует
+3. Убедитесь, что выбраны активные инбаунды через `/settings`
 4. Проверьте логи бота для деталей
 
 ### Не генерируется QR-код
@@ -350,6 +380,7 @@ docker stats vpn_bot
 - **[INSTALL.md](INSTALL.md)** - Быстрая установка за 5 минут
 - **[DEPLOYMENT.md](DEPLOYMENT.md)** - Полное руководство по развертыванию на VPS
 - **[INBOUND_MANAGEMENT.md](INBOUND_MANAGEMENT.md)** - Управление инбаундами
+- **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** - Устранение неполадок и диагностика
 - **[CHECKLIST.md](CHECKLIST.md)** - Чеклист для проверки установки
 - **[SUMMARY.md](SUMMARY.md)** - Итоговое резюме и технические детали
 - **[DOCS_INDEX.md](DOCS_INDEX.md)** - Навигация по всей документации

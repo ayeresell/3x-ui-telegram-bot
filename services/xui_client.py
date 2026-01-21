@@ -28,7 +28,8 @@ class XUIClient:
         """Async context manager entry."""
         self.client = httpx.AsyncClient(
             timeout=httpx.Timeout(connect=10.0, read=30.0, write=10.0, pool=10.0),
-            follow_redirects=True
+            follow_redirects=True,
+            verify=settings.XUI_VERIFY_SSL  # Проверка SSL (по умолчанию False для самоподписанных сертификатов)
         )
         await self.login()
         return self
@@ -90,20 +91,34 @@ class XUIClient:
     
     async def login(self) -> bool:
         """Authenticate and get session cookie."""
+        login_url = f"{self.base_url}/login"
+        
         try:
-            log.info("Authenticating with 3x-ui panel...")
+            log.info(f"Authenticating with 3x-ui panel...")
+            log.info(f"Base URL: {self.base_url}")
+            log.info(f"Login URL: {login_url}")
+            log.info(f"Username: {self.username}")
             
+            # Try login with form data
             response = await self.client.post(
-                f"{self.base_url}/login",
+                login_url,
                 data={
                     "username": self.username,
                     "password": self.password
+                },
+                headers={
+                    "Content-Type": "application/x-www-form-urlencoded"
                 }
             )
+            
+            log.info(f"Login response status: {response.status_code}")
+            log.info(f"Response headers: {dict(response.headers)}")
             
             if response.status_code == 200:
                 # Extract session cookie
                 cookies = response.cookies
+                log.info(f"Cookies received: {list(cookies.keys())}")
+                
                 if cookies:
                     cookie_parts = []
                     for name, value in cookies.items():
@@ -111,13 +126,30 @@ class XUIClient:
                     self.session_cookie = "; ".join(cookie_parts)
                     log.info("Successfully authenticated with 3x-ui panel")
                     return True
+                else:
+                    log.error("No cookies received from 3x-ui panel")
+                    log.error(f"Response body: {response.text[:500]}")
+                    raise XUIClientError("No session cookie received")
             
-            log.error(f"Authentication failed: {response.status_code}")
-            raise XUIClientError("Authentication failed")
+            log.error(f"Authentication failed with status {response.status_code}")
+            log.error(f"Response body: {response.text[:500]}")
+            raise XUIClientError(f"Authentication failed with status {response.status_code}")
         
+        except httpx.ConnectError as e:
+            log.error(f"Connection error during login: {e}")
+            log.error(f"Failed to connect to: {login_url}")
+            raise XUIClientError(f"Connection failed: Cannot connect to {login_url}")
+        except httpx.TimeoutException as e:
+            log.error(f"Timeout error during login: {e}")
+            raise XUIClientError(f"Connection timeout to {login_url}")
+        except httpx.RequestError as e:
+            log.error(f"Network error during login: {type(e).__name__} - {e}")
+            raise XUIClientError(f"Login failed: {type(e).__name__} - {e}")
         except Exception as e:
-            log.error(f"Login error: {e}")
-            raise XUIClientError(f"Login failed: {e}")
+            log.error(f"Login error: {type(e).__name__} - {e}")
+            import traceback
+            log.error(f"Traceback: {traceback.format_exc()}")
+            raise XUIClientError(f"Login failed: {type(e).__name__} - {e}")
     
     async def get_inbound(self, inbound_id: int) -> Dict[str, Any]:
         """Get inbound configuration by ID."""
