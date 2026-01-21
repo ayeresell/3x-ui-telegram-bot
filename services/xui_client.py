@@ -174,64 +174,20 @@ class XUIClient:
             log.warning(f"Client {email} already exists in inbound '{inbound_remark}'")
             raise XUIClientError(f"Клиент с таким именем уже существует в инбаунде '{inbound_remark}'. Попросите пользователя выбрать другое имя.")
         
-        # Get current inbound configuration
-        inbound_data = await self.get_inbound(inbound_id)
-        
-        if not inbound_data.get("success"):
-            raise XUIClientError("Failed to get inbound configuration")
-        
-        obj = inbound_data.get("obj")
-        if not obj:
-            raise XUIClientError("Invalid inbound data")
-        
-        # Parse existing settings
-        settings_str = obj.get("settings", "{}")
-        try:
-            settings_dict = json.loads(settings_str)
-        except json.JSONDecodeError:
-            settings_dict = {"clients": []}
-        
-        # Get existing clients
-        existing_clients = settings_dict.get("clients", [])
-        
-        # Check for duplicate emails in existing clients (this might be the issue)
-        existing_emails = [c.get("email") for c in existing_clients]
-        email_counts = {}
-        for e in existing_emails:
-            email_counts[e] = email_counts.get(e, 0) + 1
-        
-        # Find duplicates in existing clients
-        duplicates = [e for e, count in email_counts.items() if count > 1]
-        if duplicates:
-            log.error(f"Found duplicate emails in inbound {inbound_id}: {duplicates}")
-            raise XUIClientError(
-                f"В инбаунде найдены дубликаты клиентов: {', '.join(duplicates)}. "
-                f"Удалите их через панель 3x-ui перед созданием новых клиентов."
-            )
-        
-        # Check if new email already exists in this inbound
-        if email in existing_emails:
-            log.error(f"Client {email} already exists in inbound {inbound_id}")
-            raise XUIClientError(
-                f"Клиент с email '{email}' уже существует в этом инбаунде. "
-                f"Удалите его через панель 3x-ui."
-            )
-        
-        # Create new client
-        new_client = {
-            "id": uuid,
-            "email": email,
-            "enable": enable,
-            "flow": ""
-        }
-        
-        # Add client to the list
-        settings_dict["clients"].append(new_client)
-        
-        # Prepare request data
+        # Prepare request data with only the new client info
+        # This avoids sending the entire client list which might contain duplicates
         request_data = {
             "id": inbound_id,
-            "settings": json.dumps(settings_dict)
+            "settings": json.dumps({
+                "clients": [
+                    {
+                        "id": uuid,
+                        "email": email,
+                        "enable": enable,
+                        "flow": ""
+                    }
+                ]
+            })
         }
         
         # Add client via API
