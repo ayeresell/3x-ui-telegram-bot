@@ -131,14 +131,51 @@ firewall-cmd --reload
 **Решение:**
 Если бот в Docker, а панель на хосте, используйте:
 ```bash
-# В Linux
-XUI_BASE_URL=http://172.17.0.1:2053
+# В Linux - используйте IP хоста из Docker
+XUI_BASE_URL=http://172.17.0.1:54544/6yUOrwyP4W
+
+# Или используйте host.docker.internal (в некоторых версиях Docker)
+XUI_BASE_URL=http://host.docker.internal:54544/6yUOrwyP4W
 
 # Или добавьте бот в сеть хоста
 docker compose down
 # Отредактируйте docker-compose.yml, добавьте:
 # network_mode: "host"
 docker compose up -d
+```
+
+### 7. Панель на том же сервере, но недоступна из Docker
+
+**Проблема:** Docker контейнер не может достучаться до портов хоста
+
+**Решение 1 - Использовать IP хоста:**
+```bash
+# Узнайте IP хоста
+ip addr show docker0
+
+# Используйте этот IP (обычно 172.17.0.1)
+XUI_BASE_URL=http://172.17.0.1:54544/6yUOrwyP4W
+```
+
+**Решение 2 - Добавить extra_hosts в docker-compose.yml:**
+```yaml
+services:
+  bot:
+    build: .
+    container_name: vpn_bot
+    env_file:
+      - .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    restart: unless-stopped
+```
+
+Затем в .env:
+```bash
+XUI_BASE_URL=http://host.docker.internal:54544/6yUOrwyP4W
 ```
 
 ## Дополнительная диагностика
