@@ -191,6 +191,32 @@ class XUIClient:
         except json.JSONDecodeError:
             settings_dict = {"clients": []}
         
+        # Get existing clients
+        existing_clients = settings_dict.get("clients", [])
+        
+        # Check for duplicate emails in existing clients (this might be the issue)
+        existing_emails = [c.get("email") for c in existing_clients]
+        email_counts = {}
+        for e in existing_emails:
+            email_counts[e] = email_counts.get(e, 0) + 1
+        
+        # Find duplicates in existing clients
+        duplicates = [e for e, count in email_counts.items() if count > 1]
+        if duplicates:
+            log.error(f"Found duplicate emails in inbound {inbound_id}: {duplicates}")
+            raise XUIClientError(
+                f"В инбаунде найдены дубликаты клиентов: {', '.join(duplicates)}. "
+                f"Удалите их через панель 3x-ui перед созданием новых клиентов."
+            )
+        
+        # Check if new email already exists in this inbound
+        if email in existing_emails:
+            log.error(f"Client {email} already exists in inbound {inbound_id}")
+            raise XUIClientError(
+                f"Клиент с email '{email}' уже существует в этом инбаунде. "
+                f"Удалите его через панель 3x-ui."
+            )
+        
         # Create new client
         new_client = {
             "id": uuid,

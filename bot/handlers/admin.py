@@ -644,15 +644,14 @@ async def show_all_clients(callback: CallbackQuery, session: AsyncSession):
                     break
                     
                 email = client.get('email', 'Unknown')
-                uuid = client.get('id', '')
                 enabled = client.get('enable', False)
                 status = "🟢" if enabled else "🔴"
                 
-                # Add button for this client
+                # Add button for this client (use only email to keep callback_data short)
                 buttons.append([
                     InlineKeyboardButton(
                         text=f"{status} {email}",
-                        callback_data=f"delete_client:{inbound_info['inbound_id']}:{uuid}:{email}"
+                        callback_data=f"del_client:{email}"
                     )
                 ])
                 client_count += 1
@@ -689,17 +688,16 @@ async def admin_back(callback: CallbackQuery, session: AsyncSession):
     await callback.answer()
 
 
-@router.callback_query(F.data.startswith("delete_client:"))
+@router.callback_query(F.data.startswith("del_client:"))
 async def delete_client_from_xui(callback: CallbackQuery, session: AsyncSession):
     """Delete client from 3x-ui."""
     try:
-        parts = callback.data.split(":", 3)
-        if len(parts) != 4:
-            await callback.answer("❌ Неверный формат данных.", show_alert=True)
+        # Extract email from callback data
+        email = callback.data.replace("del_client:", "")
+        
+        if not email or len(email) > 100:
+            await callback.answer("❌ Неверный email.", show_alert=True)
             return
-            
-        _, inbound_id, uuid, email = parts
-        inbound_id = int(inbound_id)
         
         # Confirm deletion
         confirm_keyboard = InlineKeyboardMarkup(
@@ -707,7 +705,7 @@ async def delete_client_from_xui(callback: CallbackQuery, session: AsyncSession)
                 [
                     InlineKeyboardButton(
                         text="✅ Да, удалить",
-                        callback_data=f"confirm_delete_client:{inbound_id}:{uuid}:{email}"
+                        callback_data=f"confirm_del:{email}"
                     )
                 ],
                 [
@@ -722,9 +720,7 @@ async def delete_client_from_xui(callback: CallbackQuery, session: AsyncSession)
         await callback.message.edit_text(
             f"⚠️ <b>Подтверждение удаления</b>\n\n"
             f"Вы уверены, что хотите удалить клиента?\n\n"
-            f"Email: <code>{email}</code>\n"
-            f"UUID: <code>{uuid}</code>\n"
-            f"Inbound ID: {inbound_id}\n\n"
+            f"Email: <code>{email}</code>\n\n"
             f"Это действие нельзя отменить!",
             reply_markup=confirm_keyboard,
             parse_mode="HTML"
@@ -736,37 +732,38 @@ async def delete_client_from_xui(callback: CallbackQuery, session: AsyncSession)
         await callback.answer("❌ Ошибка.", show_alert=True)
 
 
-@router.callback_query(F.data.startswith("confirm_delete_client:"))
+@router.callback_query(F.data.startswith("confirm_del:"))
 async def confirm_delete_client_from_xui(callback: CallbackQuery, session: AsyncSession):
     """Confirm and delete client from 3x-ui."""
     try:
-        parts = callback.data.split(":", 3)
-        if len(parts) != 4:
-            await callback.answer("❌ Неверный формат данных.", show_alert=True)
+        # Extract email from callback data
+        email = callback.data.replace("confirm_del:", "")
+        
+        if not email:
+            await callback.answer("❌ Неверный email.", show_alert=True)
             return
-            
-        _, inbound_id, uuid, email = parts
-        inbound_id = int(inbound_id)
         
-        # Delete client from 3x-ui
+        # Delete client from 3x-ui (search in all inbounds)
         async with XUIClient() as xui:
-            await xui.delete_client(uuid, inbound_id)
+            success = await xui.delete_client_from_all_inbounds(email)
         
-        await callback.message.edit_text(
-            f"✅ <b>Клиент удален</b>\n\n"
-            f"Email: <code>{email}</code>\n"
-            f"UUID: <code>{uuid}</code>\n\n"
-            f"Клиент успешно удален из 3x-ui.",
-            parse_mode="HTML"
-        )
-        
-        await callback.answer("✅ Клиент удален!")
-        log.info(f"Admin {callback.from_user.id} deleted client {email} (UUID: {uuid}) from inbound {inbound_id}")
-        
-        # Wait a bit and show clients list again
-        import asyncio
-        await asyncio.sleep(2)
-        await show_all_clients(callback, session)
+        if success:
+            await callback.message.edit_text(
+                f"✅ <b>Клиент удален</b>\n\n"
+                f"Email: <code>{email}</code>\n\n"
+                f"Клиент успешно удален из 3x-ui.",
+                parse_mode="HTML"
+            )
+            
+            await callback.answer("✅ Клиент удален!")
+            log.info(f"Admin {callback.from_user.id} deleted client {email}")
+            
+            # Wait a bit and show clients list again
+            import asyncio
+            await asyncio.sleep(2)
+            await show_all_clients(callback, session)
+        else:
+            await callback.answer("❌ Клиент не найден.", show_alert=True)
         
     except Exception as e:
         log.error(f"Error deleting client: {e}")
