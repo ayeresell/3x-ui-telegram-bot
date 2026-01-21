@@ -125,6 +125,7 @@ async def approve_request(callback: CallbackQuery, session: AsyncSession):
         
         # Update database
         await user_repo.update_approval_status(user_id, True, inbound_id)
+        await user_repo.update_active_status(user_id, True)  # Activate user after approval
         await request_repo.update_status(request_id, "approved", callback.from_user.id)
         
         # Notify user

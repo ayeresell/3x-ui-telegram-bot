@@ -33,6 +33,34 @@ router = Router()
 @router.message(Command("start"))
 async def cmd_start(message: Message, session: AsyncSession):
     """Handle /start command."""
+    # Check if user is admin
+    if message.from_user.id == settings.ADMIN_TG_ID:
+        user_repo = UserRepository(session)
+        users = await user_repo.get_all()
+        
+        total_users = len(users)
+        active_users = len([u for u in users if u.is_active])
+        approved_users = len([u for u in users if u.is_approved])
+        
+        # Import here to avoid circular import
+        from bot.keyboards.admin_kb import get_admin_menu_keyboard
+        
+        stats_text = (
+            "👨‍💼 <b>Панель администратора</b>\n\n"
+            f"👥 Всего пользователей: {total_users}\n"
+            f"✅ Одобрено: {approved_users}\n"
+            f"🟢 Активных: {active_users}\n\n"
+            "Выберите действие:"
+        )
+        
+        await message.answer(
+            stats_text,
+            reply_markup=get_admin_menu_keyboard(),
+            parse_mode="HTML"
+        )
+        return
+    
+    # Regular user flow
     user_repo = UserRepository(session)
     user = await user_repo.get_by_tg_id(message.from_user.id)
     
@@ -110,7 +138,10 @@ async def process_name(message: Message, state: FSMContext, session: AsyncSessio
     request_repo = AccessRequestRepository(session)
     
     user_uuid = str(uuid.uuid4())
-    email = f"user_{message.from_user.id}"
+    
+    # Format email as "Name_Username" or "Name_TelegramID"
+    username_part = message.from_user.username if message.from_user.username else str(message.from_user.id)
+    email = f"{full_name}_{username_part}"
     
     try:
         user = await user_repo.create(
