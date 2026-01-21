@@ -1,0 +1,19 @@
+# Telegram Bot Framework
+aiogram==3.4.1
+
+# Database
+sqlalchemy==2.0.25
+aiosqlite==0.19.0
+
+# HTTP Client
+httpx==0.26.0
+
+# Logging
+loguru==0.7.2
+
+# Configuration
+pydantic-settings==2.1.0
+python-dotenv==1.0.0
+
+# QR Code Generation
+qrcode[pil]==7.4.2
