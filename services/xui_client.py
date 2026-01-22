@@ -565,30 +565,42 @@ class XUIClient:
             params["security"] = "reality"
             reality_settings = stream_settings.get("realitySettings", {})
             
+            log.info(f"Reality settings: {reality_settings}")
+            
             # Public key
             pbk = reality_settings.get("publicKey", "")
             if pbk:
                 params["pbk"] = pbk
+            else:
+                log.warning("Reality: publicKey not found")
             
             # Fingerprint
             fp = reality_settings.get("fingerprint", "")
             if fp:
                 params["fp"] = fp
+            else:
+                log.warning("Reality: fingerprint not found")
             
             # SNI
             server_names = reality_settings.get("serverNames", [])
             if server_names:
                 params["sni"] = server_names[0]
+            else:
+                log.warning("Reality: serverNames not found")
             
             # Short IDs
             short_ids = reality_settings.get("shortIds", [])
-            if short_ids:
+            if short_ids and short_ids[0]:
                 params["sid"] = short_ids[0]
+            else:
+                log.warning("Reality: shortIds not found or empty")
             
             # Spider X
             spider_x = reality_settings.get("spiderX", "")
             if spider_x:
                 params["spx"] = quote(spider_x)
+            else:
+                log.warning("Reality: spiderX not found")
         
         # Add flow if present
         if flow:
@@ -620,6 +632,9 @@ class XUIClient:
         # Build link
         query_string = urlencode(params, safe="/:,")
         link = f"vless://{uuid}@{server}:{port}?{query_string}#{quote(email)}"
+        
+        log.info(f"Generated VLESS link: {link}")
+        log.info(f"Link params: {params}")
         
         return link
     
