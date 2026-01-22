@@ -229,6 +229,10 @@ class XUIClient:
         
         log.info(f"Protocol: {protocol}, Flow: {flow}, Fingerprint: {fingerprint}")
         
+        # Generate unique subId for subscription link
+        import hashlib
+        sub_id = hashlib.md5(f"{email}{uuid}".encode()).hexdigest()[:16]
+        
         # Prepare client data
         client_data = {
             "id": uuid,
@@ -239,7 +243,7 @@ class XUIClient:
             "totalGB": 0,
             "expiryTime": 0,
             "tgId": "",
-            "subId": "",
+            "subId": sub_id,
             "reset": 0
         }
         
@@ -438,6 +442,54 @@ class XUIClient:
             log.error(f"Failed to delete client {email}: {e}")
             return False
     
+    async def _get_subscription_link(self, sub_id: str) -> Optional[str]:
+        """
+        Get subscription link from 3x-ui /sub/ endpoint.
+        
+        Args:
+            sub_id: Client subscription ID
+        
+        Returns:
+            Subscription link or None if not available
+        """
+        try:
+            # Try to get link via /sub/ endpoint (without /panel prefix)
+            # The /sub/ endpoint is typically at the root level
+            base_without_path = self.base_url.split("/panel")[0] if "/panel" in self.base_url else self.base_url
+            sub_url = f"{base_without_path}/sub/{sub_id}"
+            
+            log.info(f"Trying subscription URL: {sub_url}")
+            
+            headers = {"Cookie": self.session_cookie} if self.session_cookie else {}
+            response = await self.client.get(sub_url, headers=headers, follow_redirects=True)
+            
+            log.info(f"Subscription response status: {response.status_code}")
+            
+            if response.status_code == 200:
+                content = response.text.strip()
+                log.info(f"Subscription content: {content[:100]}...")
+                
+                # Check if it's a valid link (starts with protocol://)
+                if content and ("://" in content):
+                    # If base64 encoded, decode it
+                    import base64
+                    try:
+                        decoded = base64.b64decode(content).decode('utf-8').strip()
+                        if decoded and "://" in decoded:
+                            return decoded
+                    except:
+                        pass
+                    
+                    # Return as-is if it's already a link
+                    return content
+            
+            log.warning(f"Subscription endpoint returned status {response.status_code}")
+            return None
+            
+        except Exception as e:
+            log.warning(f"Error getting subscription link: {e}")
+            return None
+    
     async def get_client_link(self, inbound_id: int, email: str) -> Optional[str]:
         """
         Get client connection link from 3x-ui.
@@ -479,6 +531,17 @@ class XUIClient:
             if not target_client:
                 log.error(f"Client not found: {email}")
                 return None
+            
+            # Try to get link via /sub/ endpoint if subId exists
+            sub_id = target_client.get("subId", "")
+            if sub_id:
+                sub_link = await self._get_subscription_link(sub_id)
+                if sub_link:
+                    log.info(f"Got link via subscription endpoint: {sub_link[:50]}...")
+                    return sub_link
+            
+            # Fallback: Generate link manually
+            log.info("Falling back to manual link generation")
             
             # Generate link based on protocol and settings
             protocol = obj.get("protocol", "").lower()
