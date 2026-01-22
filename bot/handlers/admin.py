@@ -565,18 +565,27 @@ async def refresh_inbounds(callback: CallbackQuery, session: AsyncSession):
                 "is_enabled": inbound.get("id") in enabled_ids
             })
         
+        from datetime import datetime
+        
         settings_text = (
             "⚙️ <b>Настройки инбаундов</b>\n\n"
             "Выберите инбаунды, которые будут доступны для подключения пользователей.\n\n"
             "✅ - Включен\n"
-            "⚪ - Выключен"
+            "⚪ - Выключен\n\n"
+            f"<i>Обновлено: {datetime.now().strftime('%H:%M:%S')}</i>"
         )
         
-        await callback.message.edit_text(
-            settings_text,
-            reply_markup=get_inbound_list_keyboard(inbound_list),
-            parse_mode="HTML"
-        )
+        try:
+            await callback.message.edit_text(
+                settings_text,
+                reply_markup=get_inbound_list_keyboard(inbound_list),
+                parse_mode="HTML"
+            )
+        except Exception as e:
+            # If message is not modified, just update the answer
+            if "message is not modified" not in str(e):
+                raise
+        
         await callback.answer("🔄 Список обновлен!")
         
     except Exception as e:
