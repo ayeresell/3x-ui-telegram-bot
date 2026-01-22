@@ -6,7 +6,7 @@ from aiogram import Router, F
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import Message, BufferedInputFile
+from aiogram.types import Message, BufferedInputFile, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import update
 
@@ -63,6 +63,7 @@ async def cmd_start(message: Message, session: AsyncSession):
         return
     
     # Regular user flow
+    from bot.keyboards.user_kb import remove_keyboard
     user_repo = UserRepository(session)
     user = await user_repo.get_by_tg_id(message.from_user.id)
     
@@ -71,7 +72,8 @@ async def cmd_start(message: Message, session: AsyncSession):
         await message.answer(
             f"👋 Привет, {user.full_name}!\n\n"
             "Выберите действие:",
-            reply_markup=get_main_menu_keyboard()
+            reply_markup=get_main_menu_keyboard(),
+            parse_mode="HTML"
         )
     elif user and not user.is_approved:
         # User exists but not approved yet
@@ -89,41 +91,44 @@ async def cmd_start(message: Message, session: AsyncSession):
         )
 
 
-@router.message(F.text == "📝 Запросить доступ")
-async def request_access(message: Message, state: FSMContext, session: AsyncSession):
+@router.callback_query(F.data == "request_access")
+async def request_access(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
     """Handle access request button."""
     user_repo = UserRepository(session)
-    user = await user_repo.get_by_tg_id(message.from_user.id)
+    user = await user_repo.get_by_tg_id(callback.from_user.id)
     
     if user:
         if user.is_approved:
-            await message.answer(
+            await callback.message.edit_text(
                 "✅ У вас уже есть доступ!",
                 reply_markup=get_main_menu_keyboard()
             )
         else:
-            await message.answer(
+            await callback.answer(
                 "⏳ Ваша заявка уже отправлена.\n"
-                "Ожидайте одобрения администратора."
+                "Ожидайте одобрения администратора.",
+                show_alert=True
             )
         return
     
     # Start FSM for name input
     await state.set_state(AccessRequestStates.waiting_for_name)
-    await message.answer(
+    await callback.message.edit_text(
         "📝 Пожалуйста, введите ваше имя:",
         reply_markup=get_cancel_keyboard()
     )
+    await callback.answer()
 
 
-@router.message(StateFilter(AccessRequestStates.waiting_for_name), F.text == "❌ Отмена")
-async def cancel_request(message: Message, state: FSMContext):
+@router.callback_query(F.data == "cancel_request")
+async def cancel_request_callback(callback: CallbackQuery, state: FSMContext):
     """Cancel access request."""
     await state.clear()
-    await message.answer(
+    await callback.message.edit_text(
         "❌ Запрос отменен.",
         reply_markup=get_request_access_keyboard()
     )
+    await callback.answer()
 
 
 @router.message(StateFilter(AccessRequestStates.waiting_for_name))
@@ -213,17 +218,18 @@ async def process_name(message: Message, state: FSMContext, session: AsyncSessio
         await state.clear()
 
 
-@router.message(F.text == "👤 Мой профиль")
-async def show_profile(message: Message, session: AsyncSession):
+@router.callback_query(F.data == "user_profile")
+async def show_profile(callback: CallbackQuery, session: AsyncSession):
     """Show user profile with traffic statistics."""
     user_repo = UserRepository(session)
-    user = await user_repo.get_by_tg_id(message.from_user.id)
+    user = await user_repo.get_by_tg_id(callback.from_user.id)
     
     if not user or not user.is_approved:
-        await message.answer(
+        await callback.message.edit_text(
             "❌ У вас нет доступа. Запросите доступ сначала.",
             reply_markup=get_request_access_keyboard()
         )
+        await callback.answer()
         return
     
     # Get traffic statistics from 3x-ui
@@ -244,26 +250,36 @@ async def show_profile(message: Message, session: AsyncSession):
         f"📅 Дата подключения: {format_date(user.created_at)}\n"
     )
     
-    await message.answer(profile_text, parse_mode="HTML")
+    # Add back button
+    back_kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="user_menu")]
+        ]
+    )
+    
+    await callback.message.edit_text(profile_text, reply_markup=back_kb, parse_mode="HTML")
+    await callback.answer()
 
 
-@router.message(F.text == "🔗 Подключиться")
-async def show_connection(message: Message, session: AsyncSession):
+@router.callback_query(F.data == "user_connection")
+async def show_connection(callback: CallbackQuery, session: AsyncSession):
     """Generate and show connection link and QR code."""
     user_repo = UserRepository(session)
-    user = await user_repo.get_by_tg_id(message.from_user.id)
+    user = await user_repo.get_by_tg_id(callback.from_user.id)
     
     if not user or not user.is_approved:
-        await message.answer(
+        await callback.message.edit_text(
             "❌ У вас нет доступа. Запросите доступ сначала.",
             reply_markup=get_request_access_keyboard()
         )
+        await callback.answer()
         return
     
     if not user.is_active:
-        await message.answer(
+        await callback.answer(
             "❌ Ваш доступ деактивирован.\n"
-            "Обратитесь к администратору."
+            "Обратитесь к администратору.",
+            show_alert=True
         )
         return
     
@@ -294,25 +310,38 @@ async def show_connection(message: Message, session: AsyncSession):
         
         # Send QR code
         qr_file = BufferedInputFile(qr_image.read(), filename="vpn_qr.png")
-        await message.answer_photo(
+        
+        # Add back button
+        back_kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="◀️ Назад", callback_data="user_menu")]
+            ]
+        )
+        
+        await callback.message.answer_photo(
             qr_file,
             caption=(
                 "🔗 <b>Подключение к VPN</b>\n\n"
                 "Отсканируйте QR-код или скопируйте ссылку ниже:\n\n"
                 f"<code>{connection_link}</code>"
             ),
+            reply_markup=back_kb,
             parse_mode="HTML"
         )
         
-        log.info(f"Connection info sent to user: tg_id={message.from_user.id}")
+        # Delete the menu message
+        await callback.message.delete()
+        
+        log.info(f"Connection info sent to user: tg_id={callback.from_user.id}")
+        await callback.answer()
     
     except Exception as e:
         log.error(f"Error generating connection info: {e}")
-        await message.answer("❌ Ошибка при генерации данных подключения.")
+        await callback.answer("❌ Ошибка при генерации данных подключения.", show_alert=True)
 
 
-@router.message(F.text == "📖 Инструкции")
-async def show_instructions(message: Message):
+@router.callback_query(F.data == "user_instructions")
+async def show_instructions(callback: CallbackQuery):
     """Show VPN client installation instructions."""
     instructions = (
         "📖 <b>Инструкции по подключению</b>\n\n"
@@ -330,4 +359,35 @@ async def show_instructions(message: Message):
         "✅ Готово! Вы подключены к VPN."
     )
     
-    await message.answer(instructions, parse_mode="HTML", disable_web_page_preview=True)
+    # Add back button
+    back_kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="user_menu")]
+        ]
+    )
+    
+    await callback.message.edit_text(instructions, reply_markup=back_kb, parse_mode="HTML")
+    await callback.answer()
+
+
+@router.callback_query(F.data == "user_menu")
+async def show_user_menu(callback: CallbackQuery, session: AsyncSession):
+    """Show user main menu."""
+    user_repo = UserRepository(session)
+    user = await user_repo.get_by_tg_id(callback.from_user.id)
+    
+    if not user or not user.is_approved:
+        await callback.message.edit_text(
+            "❌ У вас нет доступа.",
+            reply_markup=get_request_access_keyboard()
+        )
+        await callback.answer()
+        return
+    
+    await callback.message.edit_text(
+        f"👋 Привет, {user.full_name}!\n\n"
+        "Выберите действие:",
+        reply_markup=get_main_menu_keyboard(),
+        parse_mode="HTML"
+    )
+    await callback.answer()

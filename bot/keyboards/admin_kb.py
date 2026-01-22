@@ -67,6 +67,13 @@ def get_inbound_list_keyboard(inbounds: list) -> InlineKeyboardMarkup:
         )
     ])
     
+    buttons.append([
+        InlineKeyboardButton(
+            text="◀️ Назад",
+            callback_data="admin_back"
+        )
+    ])
+    
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
     return keyboard
 
@@ -132,15 +139,23 @@ def get_user_list_keyboard(users: list, page: int = 0, per_page: int = 5) -> Inl
     nav_buttons = []
     if page > 0:
         nav_buttons.append(
-            InlineKeyboardButton(text="◀️ Назад", callback_data=f"admin_page:{page-1}")
+            InlineKeyboardButton(text="◀️", callback_data=f"admin_page:{page-1}")
         )
     if end_idx < len(users):
         nav_buttons.append(
-            InlineKeyboardButton(text="Вперед ▶️", callback_data=f"admin_page:{page+1}")
+            InlineKeyboardButton(text="▶️", callback_data=f"admin_page:{page+1}")
         )
     
     if nav_buttons:
         buttons.append(nav_buttons)
+    
+    # Back to main menu button
+    buttons.append([
+        InlineKeyboardButton(
+            text="◀️ Назад",
+            callback_data="admin_back"
+        )
+    ])
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
     return keyboard

@@ -688,7 +688,26 @@ async def show_all_clients(callback: CallbackQuery, session: AsyncSession):
 @router.callback_query(F.data == "admin_back")
 async def admin_back(callback: CallbackQuery, session: AsyncSession):
     """Go back to admin menu."""
-    await cmd_admin(callback.message, session)
+    user_repo = UserRepository(session)
+    users = await user_repo.get_all()
+    
+    total_users = len(users)
+    active_users = len([u for u in users if u.is_active])
+    approved_users = len([u for u in users if u.is_approved])
+    
+    stats_text = (
+        "👨‍💼 <b>Панель администратора</b>\n\n"
+        f"👥 Всего пользователей: {total_users}\n"
+        f"✅ Одобрено: {approved_users}\n"
+        f"🟢 Активных: {active_users}\n\n"
+        "Выберите действие:"
+    )
+    
+    await callback.message.edit_text(
+        stats_text,
+        reply_markup=get_admin_menu_keyboard(),
+        parse_mode="HTML"
+    )
     await callback.answer()
 
 
