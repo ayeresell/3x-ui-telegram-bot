@@ -486,11 +486,18 @@ class XUIClient:
             
             # Get stream settings
             stream_settings_str = obj.get("streamSettings", "{}")
+            log.info(f"Raw streamSettings type: {type(stream_settings_str)}")
+            log.info(f"Raw streamSettings: {str(stream_settings_str)[:500]}")
+            
             stream_settings = json.loads(stream_settings_str) if isinstance(stream_settings_str, str) else stream_settings_str
+            
+            log.info(f"Parsed streamSettings keys: {stream_settings.keys() if stream_settings else 'None'}")
             
             # Get network type and security
             network = stream_settings.get("network", "tcp")
             security = stream_settings.get("security", "none")
+            
+            log.info(f"Network: {network}, Security: {security}")
             
             # Build link based on protocol
             if protocol == "vless":
@@ -581,7 +588,8 @@ class XUIClient:
             params["security"] = "reality"
             reality_settings = stream_settings.get("realitySettings", {})
             
-            log.info(f"Reality settings: {reality_settings}")
+            log.info(f"Reality settings keys: {reality_settings.keys() if reality_settings else 'None'}")
+            log.info(f"Reality settings full: {reality_settings}")
             
             # Public key
             pbk = reality_settings.get("publicKey", "")
