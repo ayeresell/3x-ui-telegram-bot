@@ -209,10 +209,10 @@ class XUIClient:
             obj = inbound_data.get("obj", {})
             protocol = obj.get("protocol", "").lower()
         
-        # Set flow based on protocol
+        # Set flow and get Reality settings if applicable
         flow = ""
+        fingerprint = ""
         if protocol == "vless":
-            # For VLESS with Reality, use xtls-rprx-vision
             stream_settings = obj.get("streamSettings", "")
             try:
                 if isinstance(stream_settings, str):
@@ -220,29 +220,38 @@ class XUIClient:
                 security = stream_settings.get("security", "")
                 if security == "reality":
                     flow = "xtls-rprx-vision"
-            except:
-                pass
+                    # Get fingerprint from Reality settings
+                    reality_settings = stream_settings.get("realitySettings", {})
+                    fingerprint = reality_settings.get("fingerprint", "random")
+                    log.info(f"Reality detected: flow={flow}, fingerprint={fingerprint}")
+            except Exception as e:
+                log.error(f"Error parsing stream settings: {e}")
         
-        log.info(f"Protocol: {protocol}, Flow: {flow}")
+        log.info(f"Protocol: {protocol}, Flow: {flow}, Fingerprint: {fingerprint}")
+        
+        # Prepare client data
+        client_data = {
+            "id": uuid,
+            "email": email,
+            "enable": enable,
+            "flow": flow,
+            "limitIp": 0,
+            "totalGB": 0,
+            "expiryTime": 0,
+            "tgId": "",
+            "subId": "",
+            "reset": 0
+        }
+        
+        # Add fingerprint for Reality
+        if fingerprint:
+            client_data["fingerprint"] = fingerprint
         
         # Prepare request data with complete client info as per 3x-ui API spec
         request_data = {
             "id": inbound_id,
             "settings": json.dumps({
-                "clients": [
-                    {
-                        "id": uuid,
-                        "email": email,
-                        "enable": enable,
-                        "flow": flow,
-                        "limitIp": 0,
-                        "totalGB": 0,
-                        "expiryTime": 0,
-                        "tgId": "",
-                        "subId": "",
-                        "reset": 0
-                    }
-                ]
+                "clients": [client_data]
             })
         }
         
