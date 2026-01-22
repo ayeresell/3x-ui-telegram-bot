@@ -203,8 +203,7 @@ async def process_name(message: Message, state: FSMContext, session: AsyncSessio
         await state.clear()
         await message.answer(
             "✅ Заявка отправлена!\n"
-            "Ожидайте одобрения администратора.",
-            reply_markup=get_request_access_keyboard()
+            "Ожидайте одобрения администратора."
         )
         
         log.info(f"Access request created: user_id={user.id}, tg_id={message.from_user.id}")
