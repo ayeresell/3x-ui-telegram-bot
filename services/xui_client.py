@@ -538,11 +538,17 @@ class XUIClient:
         email = client.get("email", "")
         flow = client.get("flow", "")
         
-        # Get server address (use remark or listen address)
-        server = inbound.get("listen", "0.0.0.0")
-        if server == "0.0.0.0" or server == "":
-            # Use external address from settings or base URL
-            server = self.base_url.replace("https://", "").replace("http://", "").split(":")[0]
+        # Get server address
+        from core.config import settings
+        
+        # Priority: 1) External address from settings, 2) Listen address, 3) Base URL domain
+        if settings.XUI_EXTERNAL_ADDRESS:
+            server = settings.XUI_EXTERNAL_ADDRESS
+        else:
+            server = inbound.get("listen", "0.0.0.0")
+            if server == "0.0.0.0" or server == "" or server == "localhost":
+                # Use base URL domain as fallback
+                server = self.base_url.replace("https://", "").replace("http://", "").split(":")[0]
         
         # Build query parameters
         params = {

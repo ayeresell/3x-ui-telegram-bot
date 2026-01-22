@@ -376,17 +376,37 @@ async def show_user_menu(callback: CallbackQuery, session: AsyncSession):
     user = await user_repo.get_by_tg_id(callback.from_user.id)
     
     if not user or not user.is_approved:
-        await callback.message.edit_text(
+        # Try to delete if it's a photo message
+        try:
+            await callback.message.delete()
+        except:
+            pass
+        
+        await callback.bot.send_message(
+            callback.from_user.id,
             "❌ У вас нет доступа.",
             reply_markup=get_request_access_keyboard()
         )
         await callback.answer()
         return
     
-    await callback.message.edit_text(
-        f"👋 Привет, {user.full_name}!\n\n"
-        "Выберите действие:",
-        reply_markup=get_main_menu_keyboard(),
-        parse_mode="HTML"
-    )
+    # If it's a photo message (from connection), delete it and send new menu
+    if callback.message.photo:
+        await callback.message.delete()
+        await callback.bot.send_message(
+            callback.from_user.id,
+            f"👋 Привет, {user.full_name}!\n\n"
+            "Выберите действие:",
+            reply_markup=get_main_menu_keyboard(),
+            parse_mode="HTML"
+        )
+    else:
+        # If it's a text message, edit it
+        await callback.message.edit_text(
+            f"👋 Привет, {user.full_name}!\n\n"
+            "Выберите действие:",
+            reply_markup=get_main_menu_keyboard(),
+            parse_mode="HTML"
+        )
+    
     await callback.answer()
