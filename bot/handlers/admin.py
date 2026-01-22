@@ -539,7 +539,7 @@ async def toggle_inbound(callback: CallbackQuery, session: AsyncSession):
 @router.callback_query(F.data == "refresh_inbounds")
 async def refresh_inbounds(callback: CallbackQuery, session: AsyncSession):
     """Refresh inbound list from 3x-ui."""
-    await cmd_settings(callback.message, session)
+    await show_admin_settings(callback, session)
     await callback.answer("🔄 Список обновлен!")
 
 
@@ -576,13 +576,54 @@ async def show_admin_users(callback: CallbackQuery, session: AsyncSession):
 @router.callback_query(F.data == "admin_settings")
 async def show_admin_settings(callback: CallbackQuery, session: AsyncSession):
     """Show inbound settings."""
-    await cmd_settings(callback.message, session)
-    await callback.answer()
+    inbound_repo = ActiveInboundRepository(session)
+    
+    try:
+        # Get all inbounds from 3x-ui
+        async with XUIClient() as xui:
+            all_inbounds = await xui.get_inbound_list()
+        
+        if not all_inbounds:
+            await callback.answer("❌ Не удалось получить список инбаундов.", show_alert=True)
+            return
+        
+        # Get enabled inbounds from DB
+        enabled_inbounds = await inbound_repo.get_enabled()
+        enabled_ids = {inb.inbound_id for inb in enabled_inbounds}
+        
+        # Prepare inbound list with status
+        inbound_list = []
+        for inbound in all_inbounds:
+            inbound_list.append({
+                "id": inbound.get("id"),
+                "remark": inbound.get("remark", "Без названия"),
+                "protocol": inbound.get("protocol", "Unknown"),
+                "port": inbound.get("port", 0),
+                "is_enabled": inbound.get("id") in enabled_ids
+            })
+        
+        settings_text = (
+            "⚙️ <b>Настройки инбаундов</b>\n\n"
+            "Выберите инбаунды, которые будут доступны для подключения пользователей.\n\n"
+            "✅ - Включен\n"
+            "⚪ - Выключен"
+        )
+        
+        await callback.message.edit_text(
+            settings_text,
+            reply_markup=get_inbound_list_keyboard(inbound_list),
+            parse_mode="HTML"
+        )
+        await callback.answer()
+        
+    except Exception as e:
+        log.error(f"Error getting inbound list: {e}")
+        await callback.answer("❌ Ошибка при получении списка инбаундов.", show_alert=True)
 
 
 @router.callback_query(F.data == "admin_all_clients")
 async def show_all_clients(callback: CallbackQuery, session: AsyncSession):
-    """Show all clients from all inbounds in 3x-ui."""
+    """Show all inbounds with client counts."""
     try:
         async with XUIClient() as xui:
             inbounds = await xui.get_inbound_list()
@@ -591,88 +632,50 @@ async def show_all_clients(callback: CallbackQuery, session: AsyncSession):
             await callback.answer("❌ Не удалось получить список инбаундов.", show_alert=True)
             return
         
-        # Collect all clients from all inbounds
-        all_clients = []
+        # Collect inbounds with client counts
+        import json
         total_clients = 0
+        buttons = []
         
         for inbound in inbounds:
             inbound_id = inbound.get("id")
             remark = inbound.get("remark", "Без названия")
             protocol = inbound.get("protocol", "Unknown")
-            port = inbound.get("port", 0)
             
             settings_str = inbound.get("settings", "{}")
             try:
-                import json
                 settings_dict = json.loads(settings_str)
                 clients = settings_dict.get("clients", [])
-                
-                if clients:
-                    all_clients.append({
-                        "inbound_id": inbound_id,
-                        "remark": remark,
-                        "protocol": protocol,
-                        "port": port,
-                        "clients": clients
-                    })
-                    total_clients += len(clients)
+                client_count = len(clients)
+                total_clients += client_count
             except json.JSONDecodeError:
-                continue
-        
-        if not all_clients:
-            await callback.message.edit_text(
-                "📋 <b>Все клиенты 3x-ui</b>\n\n"
-                "Клиенты не найдены.",
-                parse_mode="HTML"
-            )
-            await callback.answer()
-            return
-        
-        # Format output with buttons for each client
-        text = f"📋 <b>Все клиенты 3x-ui</b>\n\n"
-        text += f"Всего клиентов: {total_clients}\n"
-        text += f"Инбаундов с клиентами: {len(all_clients)}\n\n"
-        text += "Нажмите на клиента для удаления:\n\n"
-        
-        buttons = []
-        client_count = 0
-        
-        for inbound_info in all_clients:
-            text += f"🔹 <b>{inbound_info['remark']}</b> (ID: {inbound_info['inbound_id']})\n"
+                client_count = 0
             
-            for client in inbound_info['clients']:
-                if client_count >= 20:  # Limit to 20 buttons
-                    break
-                    
-                email = client.get('email', 'Unknown')
-                enabled = client.get('enable', False)
-                status = "🟢" if enabled else "🔴"
-                
-                # Add button for this client (use only email to keep callback_data short)
-                buttons.append([
-                    InlineKeyboardButton(
-                        text=f"{status} {email}",
-                        callback_data=f"del_client:{email}"
-                    )
-                ])
-                client_count += 1
-            
-            text += "\n"
-            
-            if client_count >= 20:
-                text += "... (показаны первые 20 клиентов)\n"
-                break
+            # Add button for this inbound
+            buttons.append([
+                InlineKeyboardButton(
+                    text=f"🔹 {remark} ({protocol}) - {client_count} клиентов",
+                    callback_data=f"inbound_clients:{inbound_id}"
+                )
+            ])
+        
+        text = (
+            "📋 <b>Все клиенты 3x-ui</b>\n\n"
+            f"Всего клиентов: {total_clients}\n"
+            f"Инбаундов: {len(inbounds)}\n\n"
+            "Выберите инбаунд для просмотра клиентов:"
+        )
         
         # Add back button
         buttons.append([
             InlineKeyboardButton(text="◀️ Назад", callback_data="admin_back")
         ])
         
-        back_keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+        keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
         
         await callback.message.edit_text(
             text,
-            reply_markup=back_keyboard,
+            reply_markup=keyboard,
             parse_mode="HTML"
         )
         await callback.answer()
@@ -680,6 +683,76 @@ async def show_all_clients(callback: CallbackQuery, session: AsyncSession):
     except Exception as e:
         log.error(f"Error getting all clients: {e}")
         await callback.answer("❌ Ошибка при получении списка клиентов.", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("inbound_clients:"))
+async def show_inbound_clients(callback: CallbackQuery, session: AsyncSession):
+    """Show clients for a specific inbound."""
+    try:
+        inbound_id = int(callback.data.split(":")[1])
+        
+        async with XUIClient() as xui:
+            inbound_data = await xui.get_inbound(inbound_id)
+        
+        if not inbound_data.get("success"):
+            await callback.answer("❌ Не удалось получить данные инбаунда.", show_alert=True)
+            return
+        
+        obj = inbound_data.get("obj", {})
+        remark = obj.get("remark", "Без названия")
+        protocol = obj.get("protocol", "Unknown")
+        
+        settings_str = obj.get("settings", "{}")
+        import json
+        try:
+            settings_dict = json.loads(settings_str)
+            clients = settings_dict.get("clients", [])
+        except json.JSONDecodeError:
+            clients = []
+        
+        if not clients:
+            text = (
+                f"📋 <b>{remark}</b> ({protocol})\n\n"
+                "Клиенты не найдены."
+            )
+            buttons = [[InlineKeyboardButton(text="◀️ Назад", callback_data="admin_all_clients")]]
+        else:
+            text = (
+                f"📋 <b>{remark}</b> ({protocol})\n\n"
+                f"Клиентов: {len(clients)}\n\n"
+                "Нажмите на клиента для удаления:"
+            )
+            
+            buttons = []
+            for client in clients[:30]:  # Limit to 30 clients
+                email = client.get('email', 'Unknown')
+                enabled = client.get('enable', False)
+                status = "🟢" if enabled else "🔴"
+                
+                buttons.append([
+                    InlineKeyboardButton(
+                        text=f"{status} {email}",
+                        callback_data=f"del_client:{inbound_id}:{email[:30]}"
+                    )
+                ])
+            
+            if len(clients) > 30:
+                text += f"\n... (показаны первые 30 из {len(clients)})"
+            
+            buttons.append([InlineKeyboardButton(text="◀️ Назад", callback_data="admin_all_clients")])
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+        
+        await callback.message.edit_text(
+            text,
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+        await callback.answer()
+        
+    except Exception as e:
+        log.error(f"Error getting inbound clients: {e}")
+        await callback.answer("❌ Ошибка.", show_alert=True)
 
 
 @router.callback_query(F.data == "admin_back")
@@ -712,10 +785,16 @@ async def admin_back(callback: CallbackQuery, session: AsyncSession):
 async def delete_client_from_xui(callback: CallbackQuery, session: AsyncSession):
     """Delete client from 3x-ui."""
     try:
-        # Extract email from callback data
-        email = callback.data.replace("del_client:", "")
+        # Extract inbound_id and email from callback data
+        parts = callback.data.split(":", 2)
+        if len(parts) == 3:
+            inbound_id = parts[1]
+            email = parts[2]
+        else:
+            email = parts[1]
+            inbound_id = "0"
         
-        if not email or len(email) > 100:
+        if not email:
             await callback.answer("❌ Неверный email.", show_alert=True)
             return
         
@@ -725,13 +804,13 @@ async def delete_client_from_xui(callback: CallbackQuery, session: AsyncSession)
                 [
                     InlineKeyboardButton(
                         text="✅ Да, удалить",
-                        callback_data=f"confirm_del:{email}"
+                        callback_data=f"confirm_del:{inbound_id}:{email}"
                     )
                 ],
                 [
                     InlineKeyboardButton(
                         text="❌ Отмена",
-                        callback_data="admin_all_clients"
+                        callback_data=f"inbound_clients:{inbound_id}" if inbound_id != "0" else "admin_all_clients"
                     )
                 ]
             ]
@@ -756,8 +835,14 @@ async def delete_client_from_xui(callback: CallbackQuery, session: AsyncSession)
 async def confirm_delete_client_from_xui(callback: CallbackQuery, session: AsyncSession):
     """Confirm and delete client from 3x-ui."""
     try:
-        # Extract email from callback data
-        email = callback.data.replace("confirm_del:", "")
+        # Extract inbound_id and email from callback data
+        parts = callback.data.split(":", 2)
+        if len(parts) == 3:
+            inbound_id = parts[1]
+            email = parts[2]
+        else:
+            email = parts[1]
+            inbound_id = "0"
         
         if not email:
             await callback.answer("❌ Неверный email.", show_alert=True)
@@ -768,20 +853,16 @@ async def confirm_delete_client_from_xui(callback: CallbackQuery, session: Async
             success = await xui.delete_client_from_all_inbounds(email)
         
         if success:
-            await callback.message.edit_text(
-                f"✅ <b>Клиент удален</b>\n\n"
-                f"Email: <code>{email}</code>\n\n"
-                f"Клиент успешно удален из 3x-ui.",
-                parse_mode="HTML"
-            )
-            
             await callback.answer("✅ Клиент удален!")
             log.info(f"Admin {callback.from_user.id} deleted client {email}")
             
-            # Wait a bit and show clients list again
-            import asyncio
-            await asyncio.sleep(2)
-            await show_all_clients(callback, session)
+            # Return to inbound clients list
+            if inbound_id != "0":
+                # Create a fake callback to show inbound clients
+                callback.data = f"inbound_clients:{inbound_id}"
+                await show_inbound_clients(callback, session)
+            else:
+                await show_all_clients(callback, session)
         else:
             await callback.answer("❌ Клиент не найден.", show_alert=True)
         
