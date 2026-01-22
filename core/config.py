@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     XUI_PASSWORD: str
     XUI_VERIFY_SSL: bool = False  # Проверка SSL сертификатов (False для самоподписанных)
     XUI_EXTERNAL_ADDRESS: str = ""  # Внешний адрес сервера для клиентских подключений (например: example.com)
+    XUI_EXTERNAL_PORT: int = 443  # Внешний порт для клиентских подключений (по умолчанию 443)
     
     # VLESS Connection (fallback settings, optional)
     # Эти настройки используются только если не удается получить ссылку из API

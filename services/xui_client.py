@@ -538,12 +538,13 @@ class XUIClient:
         email = client.get("email", "")
         flow = client.get("flow", "")
         
-        # Get server address
+        # Get server address and port
         from core.config import settings
         
         # Priority: 1) External address from settings, 2) Listen address, 3) Base URL domain
         if settings.XUI_EXTERNAL_ADDRESS:
             server = settings.XUI_EXTERNAL_ADDRESS
+            port = settings.XUI_EXTERNAL_PORT  # Use external port from settings
         else:
             server = inbound.get("listen", "0.0.0.0")
             if server == "0.0.0.0" or server == "" or server == "localhost":
@@ -635,9 +636,13 @@ class XUIClient:
             if header_type != "none":
                 params["headerType"] = header_type
         
-        # Build link
+        # Build link with custom remark
+        # Format: "{inbound_remark} - {email}"
+        inbound_remark = inbound.get("remark", "VPN")
+        remark = f"{inbound_remark} - {email}"
+        
         query_string = urlencode(params, safe="/:,")
-        link = f"vless://{uuid}@{server}:{port}?{query_string}#{quote(email)}"
+        link = f"vless://{uuid}@{server}:{port}?{query_string}#{quote(remark)}"
         
         log.info(f"Generated VLESS link: {link}")
         log.info(f"Link params: {params}")

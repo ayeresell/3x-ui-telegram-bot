@@ -539,8 +539,49 @@ async def toggle_inbound(callback: CallbackQuery, session: AsyncSession):
 @router.callback_query(F.data == "refresh_inbounds")
 async def refresh_inbounds(callback: CallbackQuery, session: AsyncSession):
     """Refresh inbound list from 3x-ui."""
-    await show_admin_settings(callback, session)
-    await callback.answer("🔄 Список обновлен!")
+    inbound_repo = ActiveInboundRepository(session)
+    
+    try:
+        # Get all inbounds from 3x-ui
+        async with XUIClient() as xui:
+            all_inbounds = await xui.get_inbound_list()
+        
+        if not all_inbounds:
+            await callback.answer("❌ Не удалось получить список инбаундов.", show_alert=True)
+            return
+        
+        # Get enabled inbounds from DB
+        enabled_inbounds = await inbound_repo.get_enabled()
+        enabled_ids = {inb.inbound_id for inb in enabled_inbounds}
+        
+        # Prepare inbound list with status
+        inbound_list = []
+        for inbound in all_inbounds:
+            inbound_list.append({
+                "id": inbound.get("id"),
+                "remark": inbound.get("remark", "Без названия"),
+                "protocol": inbound.get("protocol", "Unknown"),
+                "port": inbound.get("port", 0),
+                "is_enabled": inbound.get("id") in enabled_ids
+            })
+        
+        settings_text = (
+            "⚙️ <b>Настройки инбаундов</b>\n\n"
+            "Выберите инбаунды, которые будут доступны для подключения пользователей.\n\n"
+            "✅ - Включен\n"
+            "⚪ - Выключен"
+        )
+        
+        await callback.message.edit_text(
+            settings_text,
+            reply_markup=get_inbound_list_keyboard(inbound_list),
+            parse_mode="HTML"
+        )
+        await callback.answer("🔄 Список обновлен!")
+        
+    except Exception as e:
+        log.error(f"Error refreshing inbound list: {e}")
+        await callback.answer("❌ Ошибка при обновлении списка.", show_alert=True)
 
 
 @router.callback_query(F.data == "admin_users")
