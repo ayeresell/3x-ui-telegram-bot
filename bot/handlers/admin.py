@@ -13,7 +13,6 @@ from bot.keyboards.admin_kb import (
     get_inbound_list_keyboard,
     get_admin_menu_keyboard
 )
-from bot.keyboards.user_kb import get_main_menu_keyboard
 from database.repositories import UserRepository, AccessRequestRepository, ActiveInboundRepository
 from services.xui_client import XUIClient, XUIClientError
 from utils.formatters import format_traffic_gb, format_status, format_date
@@ -138,8 +137,7 @@ async def approve_request(callback: CallbackQuery, session: AsyncSession):
             f"Инбаунд: {inbound.remark} ({inbound.protocol})\n\n"
             "Теперь вы можете пользоваться VPN.\n"
             "Используйте /start для доступа к функциям.",
-            parse_mode="HTML",
-            reply_markup=get_main_menu_keyboard()
+            parse_mode="HTML"
         )
         
         # Update admin message
@@ -330,8 +328,7 @@ async def activate_user(callback: CallbackQuery, session: AsyncSession):
         # Notify user
         await callback.bot.send_message(
             user.tg_id,
-            "✅ Ваш доступ к VPN был активирован администратором.",
-            reply_markup=get_main_menu_keyboard()
+            "✅ Ваш доступ к VPN был активирован администратором."
         )
         
         await callback.answer("✅ Пользователь активирован.")

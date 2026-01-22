@@ -202,6 +202,29 @@ class XUIClient:
             except json.JSONDecodeError:
                 pass  # Ignore parse errors, will try to add client anyway
         
+        # Get inbound info to determine protocol
+        inbound_data = await self.get_inbound(inbound_id)
+        protocol = ""
+        if inbound_data.get("success"):
+            obj = inbound_data.get("obj", {})
+            protocol = obj.get("protocol", "").lower()
+        
+        # Set flow based on protocol
+        flow = ""
+        if protocol == "vless":
+            # For VLESS with Reality, use xtls-rprx-vision
+            stream_settings = obj.get("streamSettings", "")
+            try:
+                if isinstance(stream_settings, str):
+                    stream_settings = json.loads(stream_settings)
+                security = stream_settings.get("security", "")
+                if security == "reality":
+                    flow = "xtls-rprx-vision"
+            except:
+                pass
+        
+        log.info(f"Protocol: {protocol}, Flow: {flow}")
+        
         # Prepare request data with complete client info as per 3x-ui API spec
         request_data = {
             "id": inbound_id,
@@ -211,7 +234,7 @@ class XUIClient:
                         "id": uuid,
                         "email": email,
                         "enable": enable,
-                        "flow": "",
+                        "flow": flow,
                         "limitIp": 0,
                         "totalGB": 0,
                         "expiryTime": 0,
